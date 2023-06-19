@@ -1,7 +1,9 @@
-import { HttpStatus } from "@nestjs/common";
+import { HttpStatus, Injectable } from "@nestjs/common";
 import { Response } from "express";
 import { createTransport } from "nodemailer";
-export class EmailUtils {
+import { IMailOption } from "./interfaces";
+@Injectable()
+export class EmailService {
     transporter: any;
     constructor() {
         this.transporter = createTransport({
@@ -69,6 +71,31 @@ export class EmailUtils {
         }
         );
     }
+
+    async sentMail(mailOption:IMailOption,  res: Response,) {
+        const mailOptions = {
+            from: process.env.MAIL_USER,
+            to: mailOption.emailTo,
+            subject: mailOption.subject,
+            html: mailOption.message,
+        };
+        await this.transporter.sendMail(mailOptions, (err:any, info:any) => {
+            if (err) {
+                console.log(err)
+                res.status(HttpStatus.BAD_REQUEST).json({ 
+                    status:false,
+                    message: '5.something went wrong'
+                });
+            }
+            if (info) {
+                res.status(HttpStatus.OK).json({ 
+                    status:true,
+                    message: 'check your email to verify your account' 
+                });
+            }
+        }
+        );
+    };
 
 
 }

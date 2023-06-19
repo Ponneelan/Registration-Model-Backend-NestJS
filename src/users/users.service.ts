@@ -4,10 +4,11 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Users } from './entities/user.entity';
 import { Repository } from 'typeorm';
+import { ForgotPasswordOtp } from './entities/forgotPasswordOTP.entity';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectRepository(Users) private usersRepository: Repository<Users>) { }
+  constructor(@InjectRepository(Users) private usersRepository: Repository<Users>,@InjectRepository(ForgotPasswordOtp) private forgotPasswordOtpRepository: Repository<ForgotPasswordOtp>) { }
 
   async create(createUserDto: CreateUserDto) {
     await this.usersRepository.save(createUserDto);
@@ -41,5 +42,20 @@ export class UsersService {
   }
   async remove(id: number) {
     await this.usersRepository.softDelete({ id });
+  }
+
+
+  // ************************ Forgot Password OTP Table ************************* //
+
+  async addOtp(otpPayload:any){
+    await this.forgotPasswordOtpRepository.save(otpPayload);
+  }
+
+  async getOTPByEmail(email:string,otp:number){
+    return await this.forgotPasswordOtpRepository.findOne({where:{email, isUsed:false},order:{id:'DESC'}});
+  }
+
+  async updateOTPToUsed(email:string, otp:number){
+    await this.forgotPasswordOtpRepository.update({email,otp},{isUsed:true});
   }
 }

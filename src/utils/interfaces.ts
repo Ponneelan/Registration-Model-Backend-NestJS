@@ -7,3 +7,13 @@ export interface ILoginPayload{
     password:string,
 }
 
+export interface IFrogotPasswordBody{
+    email:string,
+}
+
+export interface IMailOption{
+    emailTo:string,
+    subject:string,
+    message:string;
+}
+

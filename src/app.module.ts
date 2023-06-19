@@ -4,11 +4,17 @@ import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
+import { SsoUserModule } from './sso-user/sso-user.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       envFilePath: '.env',
+    }),
+    ThrottlerModule.forRoot({
+      ttl:60,
+      limit:10,
     }),
     TypeOrmModule.forRoot({
       type: 'mysql',
@@ -22,6 +28,7 @@ import { UsersModule } from './users/users.module';
       autoLoadEntities: true,
     }),
     UsersModule,
+    SsoUserModule,
 
   ],
   controllers: [AppController],
