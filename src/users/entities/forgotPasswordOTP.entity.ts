@@ -17,6 +17,12 @@ export class ForgotPasswordOtp{
     @Column({default:false})
     isUsed:boolean;
 
+    @Column({unique:true, nullable:true})
+    token:string;
+
+    @Column({default : false})
+    isTokenUsed:boolean;
+
     @CreateDateColumn()
     createdAt:Date;
 

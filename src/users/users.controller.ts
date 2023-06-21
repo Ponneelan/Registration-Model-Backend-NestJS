@@ -1,16 +1,16 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Req, Res, HttpStatus, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Req, Res, HttpStatus, Query, UseGuards, Put } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import e, { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { Users } from './entities/user.entity';
 import { hashSync, compareSync } from "bcrypt";
 import { verify, sign } from "jsonwebtoken";
 import { EmailService } from 'src/utils/emial.service';
 import { IFrogotPasswordBody, ILoginPayload, IMailOption } from 'src/utils/interfaces';
-import { time } from 'console';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { OtpService } from 'src/utils/otp/otp.service';
+import { ForgotPasswordOtp } from './entities/forgotPasswordOTP.entity';
 
 @Controller('users')
 export class UsersController {
@@ -48,6 +48,7 @@ export class UsersController {
         });
       }
     } catch (error) {
+      console.log('signup error',error);
       res.status(HttpStatus.BAD_REQUEST).json({
         status: false,
         message: "2.some thisng went wrong"
@@ -55,15 +56,16 @@ export class UsersController {
     }
   }
 
+
   @Post('verify')
-  async verify(@Query('token') token: string, @Req() req: Request, @Res() res: Response) {
-    console.log(token);
+  async verify(@Body() payload: any, @Req() req: Request, @Res() res: Response) {
+    console.log(payload.token);
     try {
-      if (token && token !== null && token !== undefined && token !== '') {
+      if (payload.token && payload.token !== null && payload.token !== undefined && payload.token !== '') {
         let jwtPayload: any;
         console.log('here');
         try {
-          jwtPayload = verify(token, process.env.SECRET_KEY);
+          jwtPayload = verify(payload.token, process.env.SECRET_KEY);
         } catch (error) {
           res.status(HttpStatus.BAD_REQUEST).json({
             status: false,
@@ -186,49 +188,46 @@ export class UsersController {
   @Post('forgotpassword')
   async forgotPassword(@Body() payload: IFrogotPasswordBody, @Req() req: Request, @Res() res: Response) {
     try {
-      if ((payload.email && payload.email !== null && payload.email !== undefined && payload.email !== '')) {
-        const existUser: Users = await this.usersService.getByEmail(payload.email);
-        if (existUser) {
-          if (existUser.isVerified) {
-            const otp = this.otpService.generateOTP();
-            console.log('otp.......', otp);
-            const otpPlayload = {
-              email: existUser.email,
-              otp: otp,
-              exparyIn: new Date().getTime() + 300000,
-            };
-            const mailOption: IMailOption = {
-              emailTo: existUser.email,
-              subject: 'Forgot Password OTP',
-              message: `Your OTP is - ${otp}`
-            }
-            await this.emailService.sentMail(mailOption, res);
-            await this.usersService.addOtp(otpPlayload);
-
-            res.status(HttpStatus.OK).json({
-              status: true,
-              message: "otp sent to user mail"
-            });
-
-          } else {
-            res.status(HttpStatus.BAD_REQUEST).json({
-              status: false,
-              message: "4.some thing went wrong"
-            });
-          }
-        } else {
-          res.status(HttpStatus.BAD_REQUEST).json({
-            status: false,
-            message: "3.some thing went wrong"
-          });
-        }
-
-      } else {
+      if (!payload || !payload?.email) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "1.some thing went wrong"
+        });
+        return;
+      }
+      const existUser: Users = await this.usersService.getByEmail(payload.email);
+      if (!existUser || !existUser?.isVerified || !existUser?.isActive) {
         res.status(HttpStatus.BAD_REQUEST).json({
           status: false,
           message: "2.some thing went wrong"
         });
+        return;
       }
+
+      const otp = this.otpService.generateOTP();
+      console.log('otp.......', otp);
+      const otpPlayload = {
+        email: existUser.email,
+        otp: otp,
+        exparyIn: new Date().getTime() + 300000,
+      };
+      const mailOption: IMailOption = {
+        emailTo: existUser.email,
+        subject: 'Forgot Password OTP',
+        message: `Your OTP is - ${otp}`
+      }
+      const token = sign({ email: existUser.email, otp: otp }, process.env.SECRET_KEY, { expiresIn: '10m' });
+
+      await this.usersService.addOtp(otpPlayload);
+      await this.emailService.sentMail(mailOption, res);
+
+      res.status(HttpStatus.OK).json({
+        status: true,
+        message: "otp sent",
+        token: token
+      });
+      return;
+
     } catch (error) {
       console.log(error);
       res.status(HttpStatus.BAD_REQUEST).json({
@@ -239,63 +238,189 @@ export class UsersController {
   }
 
   @UseGuards(ThrottlerGuard)
-  @Post('resetpassword')
-  async resetPassword(@Body() payload: any, @Req() req: Request, @Res() res: Response) {
+  @Post('verifyotp')
+  async verifyOTP(@Body() payload: any, @Req() req: Request, @Res() res: Response) {
     try {
-      if (payload) {
-        if ((payload.email && payload.email !== null && payload.email !== undefined && payload.email !== '') && (payload.otp && payload.otp !== null && payload.otp !== undefined && payload.otp !== '')) {
-          const otpData = await this.usersService.getOTPByEmail(payload.email, +payload.otp);
-          console.log('pyaload otp............',payload.otp);
-          console.log(' otpdata................',otpData);
-          if (otpData) {
-            if (otpData.otp === +payload.otp) {
-              if (new Date(+otpData.exparyIn).getTime() >= new Date().getTime()) {
-                await this.usersService.updateOTPToUsed(payload.email,payload.otp);
-                res.status(HttpStatus.OK).json({
-                  status: true,
-                  message: "otp matched"
-                });
-
-              } else {
-                res.status(HttpStatus.BAD_REQUEST).json({
-                  status: false,
-                  message: "OTP Expired"
-                });
-              }
-            } else {
-              res.status(HttpStatus.BAD_REQUEST).json({
-                status: false,
-                message: "invalid OTP"
-              });
-            }
-          } else {
-            res.status(HttpStatus.BAD_REQUEST).json({
-              status: false,
-              message: "4.some thing went wrong"
-            });
-          }
-        } else {
-          res.status(HttpStatus.BAD_REQUEST).json({
-            status: false,
-            message: "3.some thing went wrong"
-          });
-        }
-      } else {
+      if (!payload || !payload.token || !payload.otp) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "4.Some thing went wrong"
+        });
+        return;
+      }
+      let tokenPayload: any;
+      try {
+        tokenPayload = verify(payload.token, process.env.SECRET_KEY);
+      } catch (error) {
+        console.log('verify otp',error);
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "catch error ...some thisng went worng"
+        });
+        return;
+      }
+      const existUser: Users = await this.usersService.getByEmail(tokenPayload?.email);
+      if (!existUser) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "3.some thing went wrong"
+        });
+        return;
+      }
+      const otpData = await this.usersService.getOTPByEmail(existUser.email, +payload.otp);
+      console.log('pyaload otp............', payload.otp);
+      console.log(' otpdata................', otpData);
+      if (!otpData) {
         res.status(HttpStatus.BAD_REQUEST).json({
           status: false,
           message: "2.some thing went wrong"
         });
+        return;
       }
-
+      if (otpData.otp !== +payload.otp) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "invalid OTP"
+        });
+        return;
+      }
+      if (!(new Date(+otpData.exparyIn).getTime() >= new Date().getTime())) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "OTP Expired"
+        });
+        return;
+      }
+      await this.usersService.updateOTPToUsed(existUser.email, payload.otp);
+      const token = sign({ email: existUser.email, id: existUser.id }, process.env.SECRET_KEY);
+      await this.usersService.updateTokenToOtp(existUser.email, token, +payload.otp);
+      res.status(HttpStatus.OK).json({
+        status: true,
+        token: token,
+        message: "otp matched",
+      });
     } catch (error) {
       res.status(HttpStatus.BAD_REQUEST).json({
         status: false,
         message: "1.some thing went wrong"
       });
+      return;
     }
-
   }
 
+  @UseGuards(ThrottlerGuard)
+  @Put('resetpassword')
+  async resetPassword(@Body() payload: any, @Req() req: Request, @Res() res: Response) {
+    try {
+      if (!payload || !payload?.token || !payload?.password) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "1.some thing went wrong"
+        });
+        return;
+      }
+      const tokenData: ForgotPasswordOtp = await this.usersService.verifyTokenIsused(payload?.token);
+      if (tokenData.isTokenUsed) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "5.some thisng went worng"
+        });
+        return;
+      }
+      let tokenPayload: any;
+      try {
+        tokenPayload = verify(payload?.token, process.env.SECRET_KEY);
+      } catch (error) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "2.some thing went wrong"
+        });
+        return;
+      }
+      const existUser: Users = await this.usersService.getByEmail(tokenPayload.email);
+
+      if (!existUser) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "3.some thing went wrong"
+        });
+        return;
+      }
+      const hashPassword = hashSync(payload.password, 10);
+      console.log('email........', existUser.email);
+      console.log('pass........', hashPassword);
+
+      await this.usersService.updatePassword(existUser.email, hashPassword);
+      res.status(HttpStatus.OK).json({
+        status: true,
+        message: 'Password Reset Successfull'
+      });
+      return;
+    } catch (error) {
+      console.log('reset password error........', error);
+      res.status(HttpStatus.BAD_REQUEST).json({
+        status: false,
+        message: "4.some thing went wrong"
+      });
+      return;
+    }
+  }
+
+  @UseGuards(ThrottlerGuard)
+  @Post('resendotp')
+  async resentOtp(@Body() payload: any, @Req() req: Request, @Res() res: Response) {
+    try {
+      if (!payload || !payload?.token) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "1.some thing went wrong"
+        });
+        return;
+      }
+      let tokenPayload: any;
+      try {
+        tokenPayload = verify(payload?.token, process.env.SECRET_KEY);
+      } catch (error) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "2.some thing went wrong"
+        });
+        return;
+      }
+
+      const existUser: Users = await this.usersService.getByEmail(tokenPayload.email);
+      if (!existUser) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          status: false,
+          message: "3.some thing went wrong"
+        });
+        return;
+      }
+      const newOtp = this.otpService.generateOTP();
+      console.log('new otp ............',newOtp);
+      const mailOption: IMailOption = {
+        emailTo: existUser.email,
+        subject: 'Forgot Password OTP',
+        message: `Your OTP is - ${newOtp}`
+      }
+      await this.emailService.sentMail(mailOption, res);
+      await this.usersService.updateOtp(existUser.email,  newOtp);
+      res.status(HttpStatus.OK).json({
+        status: true,
+        message: "otp sent",
+      });
+      return;
+
+
+    } catch (error) {
+      console.log('reset password error........', error);
+      res.status(HttpStatus.BAD_REQUEST).json({
+        status: false,
+        message: "4.some thing went wrong"
+      });
+      return;
+    }
+  }
   @UseGuards(ThrottlerGuard)
   @Get('users')
   findAll() {
