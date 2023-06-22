@@ -134,8 +134,8 @@ export class UsersController {
           if (!existUser.isVerified) {
             const token = sign({ id: existUser.id, email: existUser.email }, process.env.SECRET_KEY, { expiresIn: '30m' })
             this.emailService.sendVerificationMail(existUser.email, token, res);
-            res.status(HttpStatus.OK).json({
-              status: true,
+            res.status(HttpStatus.BAD_REQUEST).json({
+              status: false,
               message: "Verification mail sent to user"
             });
           } else {

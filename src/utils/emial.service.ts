@@ -11,7 +11,8 @@ export class EmailService {
             auth: {
                 user: process.env.MAIL_USER,
                 pass: process.env.MAIL_PASSWORD
-            }
+            },
+            secure:true,
         });
         this.transporter.verify((err:any, success:any) => {
             if (err) {
@@ -28,7 +29,7 @@ export class EmailService {
             from: process.env.MAIL_USER,
             to: email,
             subject: 'Verify your account',
-            html: `<h1>Click on the link to verify your account</h1><br/> <p>${process.env.FRONT_END_URL}/verify/?token=${token}</p>`,
+            html: `<h1>Click on the link to verify your account</h1><br/> <a href="${process.env.FRONT_END_URL}/verify/?token=${token}">Click here</a>`,
         };
         this.transporter.sendMail(mailOptions, (err:any, info:any) => {
             if (err) {
