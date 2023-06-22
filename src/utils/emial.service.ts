@@ -29,7 +29,7 @@ export class EmailService {
             from: process.env.MAIL_USER,
             to: email,
             subject: 'Verify your account',
-            html: `<h1>Click on the link to verify your account</h1><br/> <a href="${process.env.FRONT_END_URL}/verify/?token=${token}">Click here</a>`,
+            html: `<h1>Click on the link to verify your account</h1><br/> <a href="${process.env.FRONT_END_URL}/verify/?token=${token}">${process.env.FRONT_END_URL}/verify/?token=${token}</a>`,
         };
         this.transporter.sendMail(mailOptions, (err:any, info:any) => {
             if (err) {
